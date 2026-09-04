@@ -416,38 +416,34 @@ function semanticReview(text) {
 }
 
 // ===== MCP 扫描（仅用于“登记发现”，不做任何接管，不改任何配置）=====
-// v2.0.7-fix2：双源扫描（mcpServers + pluginMetadata）——回退后 mcpServers 条目被移除，
-// 但 pluginMetadata 保留全部已安装平台信息（endpoint/bearerToken），据此可重建登记集合。
 function collectAllMcpEndpoints(cfg) {
   const found = [];
   const seen = new Set();
   const servers = (cfg && cfg.mcpServers && typeof cfg.mcpServers === 'object') ? cfg.mcpServers : {};
-  const meta = (cfg && cfg.pluginMetadata && typeof cfg.pluginMetadata === 'object') ? cfg.pluginMetadata : {};
-  function push(id, node) {
-    if (!node || typeof node !== 'object') return;
+  for (const rid of Object.keys(servers)) {
+    const node = servers[rid];
+    if (!node || typeof node !== 'object') continue;
     const ep = (node.endpoint || node.url || node.sseUrl || null);
-    if (typeof ep === 'string' && /^https?:\/\//i.test(ep) && !seen.has(id)) {
-      seen.add(id);
-      found.push({ id: id, node: node, endpoint: ep });
+    if (typeof ep === 'string' && /^https?:\/\//i.test(ep)) {
+      if (!seen.has(rid)) {
+        seen.add(rid);
+        found.push({ id: rid, node: node, endpoint: ep });
+      }
     }
   }
-  for (const rid of Object.keys(servers)) push(rid, servers[rid]);
-  for (const rid of Object.keys(meta)) push(rid, meta[rid]);
   return found;
 }
 
 // ===== 接管集合（v2.0.6 审核修复）：仅本插件登记在册（routes.json 中 bridge_deploy=true）且仍存在于 mcpServers 的条目 =====
 // deploy/rollback/route 一律只作用于该集合，与“回退仅还原登记条目”的安全承诺完全一致；无关配置绝不触碰。
-// v2.0.7-fix2：节点缺失时从 pluginMetadata 合成（deploy 会把条目写回 mcpServers），支持回退后一键恢复
 function collectMcpEndpoints(cfg) {
   const routes = (() => { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'routes.json'), 'utf8')).routes || {}; } catch (e) { return {}; } })();
   const servers = (cfg && cfg.mcpServers && typeof cfg.mcpServers === 'object') ? cfg.mcpServers : {};
-  const meta = (cfg && cfg.pluginMetadata && typeof cfg.pluginMetadata === 'object') ? cfg.pluginMetadata : {};
   const found = [];
   for (const rid of Object.keys(routes)) {
     const r = routes[rid];
     if (!r || r.bridge_deploy !== true) continue;
-    const node = servers[rid] || meta[rid];
+    const node = servers[rid];
     if (!node || typeof node !== 'object') continue;
     const ep = (node.endpoint || node.url || node.sseUrl || r.original_endpoint || null);
     if (typeof ep === 'string' && /^https?:\/\//i.test(ep)) {
@@ -580,7 +576,6 @@ const server = http.createServer(async (req, res) => {
         id: k,
         enabled: routes.routes[k].enabled !== false,
         scope: routes.routes[k].scope || 'public',
-        semantic_enabled: routes.routes[k].semantic_enabled === true,
       })),
     }));
   }
@@ -1089,7 +1084,12 @@ const server = http.createServer(async (req, res) => {
     // disabled = 退回官方直连（不检查、不拦截，工具照常；保留路由可再开）
     if (route && route.original_endpoint) {
       const directRoute = Object.assign({}, route, { target: route.original_endpoint });
-      return forward(routeId, directRoute, req, '', res);
+      // v2.0.7-fix3: 放行分支 POST 必须带原始 body（否则官方端点收空 body 无法解析，MCP 工具调用全失败）
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        return forward(routeId, directRoute, req, '', res);
+      }
+      const directBody = await readBody(req);
+      return forward(routeId, directRoute, req, directBody, res);
     }
     res.writeHead(404, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'guard-proxy: route not found or disabled: ' + routeId }));
