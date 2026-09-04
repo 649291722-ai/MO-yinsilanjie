@@ -1137,11 +1137,36 @@ const server = http.createServer(async (req, res) => {
   forward(routeId, route, req, body, res);
 });
 
+let eaddrRetry = 0;
+function probeLocalState(cb) {
+  const req = http.get({ host: '127.0.0.1', port: PORT, path: '/state', timeout: 1500 }, (res) => {
+    let d = '';
+    res.on('data', (c) => { d += c; });
+    res.on('end', () => { cb(d.indexOf('alive') >= 0); });
+  });
+  req.on('timeout', () => { req.destroy(); cb(false); });
+  req.on('error', () => { cb(false); });
+}
 server.on('error', (err) => {
-  // 防多实例争抢：端口已有实例在听（EADDRINUSE）时静默退出，不刷崩溃日志；其余错误照常记录
+  // fix4：EADDRINUSE 自愈——探测占端口者是否为健康实例（/state 返回 alive）；
+  // 健康 -> 安静退出（单实例保护）；僵死残留 -> 重试接管端口，防止死锁
   if (err && err.code === 'EADDRINUSE') {
-    console.log('[MO-guard] port ' + PORT + ' already in use by another instance, exiting quietly.');
-    process.exit(0);
+    probeLocalState((healthy) => {
+      if (healthy) {
+        console.log('[MO-guard] port ' + PORT + ' held by healthy instance, exiting quietly.');
+        process.exit(0);
+        return;
+      }
+      if (eaddrRetry < 10) {
+        eaddrRetry++;
+        console.log('[MO-guard] port ' + PORT + ' stale socket, retry ' + eaddrRetry + '/10 ...');
+        setTimeout(() => { server.listen(PORT, '127.0.0.1'); }, 1500);
+        return;
+      }
+      console.log('[MO-guard] port ' + PORT + ' still occupied after retries, exiting quietly.');
+      process.exit(0);
+    });
+    return;
   }
   console.error('[MO-guard] server error:', err && err.message || err);
 });
@@ -1152,4 +1177,20 @@ server.listen(PORT, '127.0.0.1', () => {
     saveJson('state.json', state);
   } catch (e) {}
   console.log('[MO-guard] listening on 127.0.0.1:' + PORT);
+});
+
+// fix4：异常兜底——未捕获异常写入 crash.log 后主动退出，交给外部 watchdog 拉起；
+// 避免带病僵死（占着端口不响应）堵死后续实例
+process.on('uncaughtException', (e) => {
+  try { fs.appendFileSync(path.join(DATA_DIR, 'crash.log'), new Date().toISOString() + ' uncaughtException: ' + (e && e.stack || e) + '\n'); } catch (_) {}
+  console.error('[MO-guard] uncaughtException:', e && e.stack || e);
+  try { server.close(); } catch (_) {}
+  process.exit(1);
+});
+process.on('unhandledRejection', (e) => {
+  try { fs.appendFileSync(path.join(DATA_DIR, 'crash.log'), new Date().toISOString() + ' unhandledRejection: ' + (e && e.stack || e) + '\n'); } catch (_) {}
+  console.error('[MO-guard] unhandledRejection:', e && e.stack || e);
+});
+process.on('SIGTERM', () => {
+  try { server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000); } catch (_) { process.exit(0); }
 });
