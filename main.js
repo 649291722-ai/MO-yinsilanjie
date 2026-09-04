@@ -17,7 +17,7 @@ async function ensureWorker() {
     try {
         if (typeof Tools === "undefined" || !Tools.System || !Tools.System.terminal) { return; }
         var term = Tools.System.terminal;
-        var cmd = "(node -e 'var n=require(\"net\");var c=n.createConnection({host:\"127.0.0.1\",port:8095});c.on(\"connect\",function(){process.exit(0)});c.on(\"error\",function(){process.exit(1)});setTimeout(function(){process.exit(1)},2000});' 2>/dev/null) || (cd " + RUN_DIR + " && setsid nohup node " + WORKER_JS + " >> " + RUN_DIR + "proxy.log 2>&1 &)";
+        var cmd = "(node -e 'var h=require(\"http\");var r=h.get({host:\"127.0.0.1\",port:8095,path:\"/state\",timeout:2000},function(res){var d=\"\";res.on(\"data\",function(c){d+=c});res.on(\"end\",function(){process.exit(d.indexOf(\"alive\")>=0?0:1)})});r.on(\"timeout\",function(){r.destroy();process.exit(1)});r.on(\"error\",function(){process.exit(1)})' 2>/dev/null) || (cd " + RUN_DIR + " && setsid nohup node " + WORKER_JS + " >> " + RUN_DIR + "proxy.log 2>&1 &)";
         // 模式A：create 会话 -> exec(sessionId, cmd)
         try {
             if (typeof term.create === "function") {
@@ -99,9 +99,37 @@ function registerToolPkg() {
             event: "application_on_foreground",
             function: onApplicationForeground
         });
-        // 注册期立即点火（无轮询版）：ToolPkg 加载时第一时间拉起 worker，
+        // 注册期立即点火：ToolPkg 加载时第一时间拉起 worker，
         // 争取在 Operit 验证远端 MCP 之前让 8095 就绪，减少「验证失败」红窗。
         try { void ensureWorker(); } catch (e) {}
+        // fix4：常驻保活 watchdog——每45秒探活 /state，失活自动拉起（带并发锁）。
+        // 不依赖 Shizuku：插件进程常驻即保活，worker 被系统杀也不怕。
+        var workerStarting = false;
+        function probeWorkerAlive(cb) {
+            try {
+                var h = require('http');
+                var req = h.get({ host: '127.0.0.1', port: 8095, path: '/state', timeout: 2500 }, function (res) {
+                    var d = '';
+                    res.on('data', function (c) { d += c; });
+                    res.on('end', function () { cb(d.indexOf('alive') >= 0); });
+                });
+                req.on('timeout', function () { req.destroy(); cb(false); });
+                req.on('error', function () { cb(false); });
+            } catch (e) { cb(false); }
+        }
+        function watchdogTick() {
+            if (workerStarting) { return; }
+            probeWorkerAlive(function (ok) {
+                if (ok) { return; }
+                workerStarting = true;
+                void ensureWorker();
+                setTimeout(function () { workerStarting = false; }, 10000);
+            });
+        }
+        try {
+            setInterval(watchdogTick, 45000);
+            setTimeout(watchdogTick, 15000);
+        } catch (e) {}
         return true;
     } catch (e) {
         return false;
