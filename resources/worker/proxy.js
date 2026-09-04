@@ -580,6 +580,7 @@ const server = http.createServer(async (req, res) => {
         id: k,
         enabled: routes.routes[k].enabled !== false,
         scope: routes.routes[k].scope || 'public',
+        semantic_enabled: routes.routes[k].semantic_enabled === true,
       })),
     }));
   }
