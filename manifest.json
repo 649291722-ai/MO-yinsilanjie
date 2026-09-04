@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "toolpkg_id": "com.mo.privacy_net",
+  "version": "2.0.7",
+  "author": [
+    "MO"
+  ],
+  "main": "main.js",
+  "name": "mo_privacy_net",
+  "display_name": {
+    "zh": "MO隐私拦截网💬",
+    "en": "MO Privacy Net"
+  },
+  "description": {
+    "zh": "通用本地隐私拦截网：把 AI 可发言的公共平台 endpoint 指向本地代理（127.0.0.1:8095），所有出站内容在网络层接受机械规则检查。无平台特判，任何平台均可接入；一键部署=仅接管本插件登记集合（登记：扫描本机 MCP 写入本插件路由表，不改动任何配置）并开启，一键回退=仅还原本插件登记集合、还原官方直连，绝不触碰无关配置。开关完全由用户掌控：开启=拦截生效；关闭=代理转为纯转发，所有平台照常使用。侧边栏面板提供代理状态/总开关/一键部署/一键回退/单路由开关/语义 API 兜底审查（OpenAI 兼容接口，fail-closed：启用后超时/出错一律拦截，绝不放行），工具箱提供全套管理工具。特性：自定义端口（任意平台接桥入口，独立卡片开关、随一键部署/回退）；语义扩展按「路由/端口开关 + 全局API配置」三重条件生效（默认关闭零消耗）；NSFW 一律拦截；敏感词+具体值才拦（如「密码114477」拦、「密码」不拦），防误判；用户可自由增删拦截关键词（热生效）；公共发言闸门 publish 支持被拦提示「检测出私密信息，已拦截内容返回」、同一平台三次拦截直接拒发；拦截日志记录命中片段可回溯。纯被动代理：无轮询、不扫描平台、不重试轰炸、不增加平台负担。【进程披露】本插件在注册及宿主应用创建/前台时，会自动通过宿主终端拉起一个常驻本地代理进程（node worker/proxy.js 运行目录，仅监听 127.0.0.1:8095）；被接管的公共平台出站数据流经该本地进程检查后转发。所有管理端点（含配置文件读写 /admin/fs）一律以本地令牌鉴权（admin_token.json，0600，令牌不可经文件接口读取）；v2.0.7 起面板与工具无需读取本地令牌文件，通过本机回环会话握手（/auth/session，仅 127.0.0.1 可达，30 分钟短效令牌）获取授权，管理与 UI 全链路不依赖系统级执行器；跨域访问（CORS）仅授予本机来源（localhost/回环/应用内页面），任意网页或 WebView 无法跨域读取含凭据文件；外部语义接口与自定义端口目标强制 HTTPS（本地回环除外）。",
+    "en": "A generic local privacy gate: points public-platform endpoints (wherever AI may speak) to a local proxy (127.0.0.1:8095). Every outbound payload is mechanically rule-checked at the network layer. No platform-specific logic — any platform can plug in. Deploy = capture ONLY the registered route set (register: scan local MCPs into the plugin own route table, touching no config) and turn the switch on; rollback = restore ONLY the registered route set back to direct connections, never touching unrelated config. User controls the switch: ON = filtering, OFF = pure passthrough. Sidebar panel ships status / master switch / deploy / rollback / per-route switch / semantic API fallback review (OpenAI-compatible, fail-closed: once enabled, timeout/errors are treated as blocked, never bypassed). Custom port bridge (any platform endpoint, per-card switch, covered by deploy/rollback); semantic extension only when route switch + global API config both on (off by default, zero cost); NSFW always blocked; sensitive word + concrete value pair blocking avoids false positives; user-editable keyword list (hot reload); publish gate returns a block notice and refuses after 3 attempts on the same platform; block log keeps hit snippets. Purely passive: no polling, no platform scanning, no retry storms, zero extra load. PROCESS DISCLOSURE: On registration & host create/foreground, this plugin auto-launches a resident local proxy process (node worker/proxy.js in run dir, listening 127.0.0.1:8095 only); outbound payloads of captured platforms are inspected locally before forwarding. ALL admin endpoints (incl. config file read/write /admin/fs) are token-authenticated (admin_token.json, 0600; token NOT readable via file API); CORS is granted only to local origins (localhost/loopback/embedded app pages); external semantic endpoints & custom-port targets require HTTPS (loopback excepted)."
+  },
+  "category": "UTILITY",
+  "enabled_by_default": true,
+  "subpackages": [
+    {
+      "id": "mo_privacy_net",
+      "entry": "packages/mo_privacy_net_tools.js",
+      "enabled_by_default": true,
+      "display_name": {
+        "zh": "MO隐私拦截网💬",
+        "en": "MO Privacy Net"
+      },
+      "description": {
+        "zh": "拦截网管理工具：状态查询、拦截开关、部署/回退路由、拦截日志、内容自检",
+        "en": "Gate management: status, master switch, deploy/rollback routes, block log, content self-check"
+      }
+    }
+  ],
+  "resources": [
+    {
+      "key": "mo_worker",
+      "path": "resources/worker",
+      "mime": "inode/directory"
+    },
+    {
+      "key": "mo_rules",
+      "path": "resources/rules",
+      "mime": "inode/directory"
+    },
+    {
+      "key": "mo_scripts",
+      "path": "resources/scripts",
+      "mime": "inode/directory"
+    }
+  ]
+}
