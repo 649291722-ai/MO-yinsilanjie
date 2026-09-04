@@ -17,7 +17,7 @@ async function ensureWorker() {
     try {
         if (typeof Tools === "undefined" || !Tools.System || !Tools.System.terminal) { return; }
         var term = Tools.System.terminal;
-        var cmd = "(node -e 'var h=require(\"http\");var r=h.get({host:\"127.0.0.1\",port:8095,path:\"/state\",timeout:2000},function(res){var d=\"\";res.on(\"data\",function(c){d+=c});res.on(\"end\",function(){process.exit(d.indexOf(\"alive\")>=0?0:1)})});r.on(\"timeout\",function(){r.destroy();process.exit(1)});r.on(\"error\",function(){process.exit(1)})' 2>/dev/null) || (cd " + RUN_DIR + " && setsid nohup node " + WORKER_JS + " >> " + RUN_DIR + "proxy.log 2>&1 &)";
+        var cmd = "(node -e 'var h=require(\"http\");var r=h.get({host:\"127.0.0.1\",port:8095,path:\"/state\",timeout:2000},function(res){var d=\"\";res.on(\"data\",function(c){d+=c});res.on(\"end\",function(){process.exit(d.indexOf(\"alive\")>=0?0:1)})});r.on(\"timeout\",function(){r.destroy();process.exit(1)});r.on(\"error\",function(){process.exit(1)})' 2>/dev/null) || (cd " + RUN_DIR + " && pkill -9 -f 'resources/worker/proxy.js' 2>/dev/null; sleep 1; setsid nohup node " + WORKER_JS + " >> " + RUN_DIR + "proxy.log 2>&1 &)";
         // 模式A：create 会话 -> exec(sessionId, cmd)
         try {
             if (typeof term.create === "function") {
